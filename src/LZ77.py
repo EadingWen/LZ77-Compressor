@@ -21,50 +21,53 @@ class LZ77Compressor:
 			within window
 		1 bit followed by 12 bits pointer (distance to the start of the match from the 
 			current position) and 4 bits (length of the match)
+		压缩格式如下：
+		没有匹配时，0bit后接8bits(1byte的字符)
+		存在匹配时，1bit后接12bits指针(从起始位置至匹配位置的距离)之后4bits(匹配长度)
 		
 		If a path to the output file is provided, the compressed data is written into 
 		a binary file. Otherwise, it is returned as a bitarray
+		如果提供输出文件位置，压缩数据写入二进制文件。否则返回一个bitarry。
 
 		if verbose is enabled, the compression description is printed to standard output
 		"""
 		data = None
 		i = 0
-		output_buffer = bitarray(endian='big')
+		output_buffer = bitarray(endian='big')		#大端模式
 
 		# read the input file 
 		try:
 			with open(input_file_path, 'rb') as input_file:
 				data = input_file.read()
 		except IOError:
-			print 'Could not open input file ...'
+			print('Could not open input file ...')
 			raise
-
+		
 		while i < len(data):
-			#print i
 
 			match = self.findLongestMatch(data, i)
-
+			
 			if match: 
 				# Add 1 bit flag, followed by 12 bit for distance, and 4 bit for the length
 				# of the match 
 				(bestMatchDistance, bestMatchLength) = match
 
 				output_buffer.append(True)
-				output_buffer.frombytes(chr(bestMatchDistance >> 4))
-				output_buffer.frombytes(chr(((bestMatchDistance & 0xf) << 4) | bestMatchLength))
+				output_buffer.frombytes(bytes([bestMatchDistance >> 4]))
+				output_buffer.frombytes(bytes([((bestMatchDistance & 0xf) << 4) | bestMatchLength]))
 
 				if verbose:
-					print "<1, %i, %i>" % (bestMatchDistance, bestMatchLength),
+					print("<1, %i, %i>" % (bestMatchDistance, bestMatchLength), end=' ')
 
 				i += bestMatchLength
 
 			else:
 				# No useful match was found. Add 0 bit flag, followed by 8 bit for the character
 				output_buffer.append(False)
-				output_buffer.frombytes(data[i])
+				output_buffer.frombytes(bytes([data[i]]))
 				
 				if verbose:
-					print "<0, %s>" % data[i],
+					print("<0, %s>" % data[i], end=' ')
 
 				i += 1
 
@@ -76,10 +79,10 @@ class LZ77Compressor:
 			try:
 				with open(output_file_path, 'wb') as output_file:
 					output_file.write(output_buffer.tobytes())
-					print "File was compressed successfully and saved to output path ..."
+					print("File was compressed successfully and saved to output path ...")
 					return None
 			except IOError:
-				print 'Could not write to output file path. Please check if the path is correct ...'
+				print('Could not write to output file path. Please check if the path is correct ...')
 				raise
 
 		# an output file path was not provided, return the compressed data
@@ -100,38 +103,40 @@ class LZ77Compressor:
 			with open(input_file_path, 'rb') as input_file:
 				data.fromfile(input_file)
 		except IOError:
-			print 'Could not open input file ...'
+			print('Could not open input file ...')
 			raise
-
-		while len(data) >= 9:
-
-			flag = data.pop(0)
+		
+		now = 0
+		while len(data)-now >= 9:
+			
+			flag = data[now]
+			now = now+1
 
 			if not flag:
-				byte = data[0:8].tobytes()
-
+				byte = data[now:now+8].tobytes()
+				
+				now = now+8
 				output_buffer.append(byte)
-				del data[0:8]
 			else:
-				byte1 = ord(data[0:8].tobytes())
-				byte2 = ord(data[8:16].tobytes())
+				byte1 = ord(data[now:now+8].tobytes())
+				byte2 = ord(data[now+8:now+16].tobytes())
 
-				del data[0:16]
+				now = now+16
 				distance = (byte1 << 4) | (byte2 >> 4)
 				length = (byte2 & 0xf)
 
 				for i in range(length):
 					output_buffer.append(output_buffer[-distance])
-		out_data =  ''.join(output_buffer)
 
 		if output_file_path:
 			try:
 				with open(output_file_path, 'wb') as output_file:
-					output_file.write(out_data)
-					print 'File was decompressed successfully and saved to output path ...'
+					for i in output_buffer :
+						output_file.write(i)
+					print('File was decompressed successfully and saved to output path ...')
 					return None 
 			except IOError:
-				print 'Could not write to output file path. Please check if the path is correct ...'
+				print('Could not write to output file path. Please check if the path is correct ...')
 				raise 
 		return out_data
 
@@ -156,7 +161,7 @@ class LZ77Compressor:
 
 			for i in range(start_index, current_position):
 
-				repetitions = len(substring) / (current_position - i)
+				repetitions = int(len(substring) / (current_position - i))
 
 				last = len(substring) % (current_position - i)
 
